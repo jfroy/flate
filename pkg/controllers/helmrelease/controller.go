@@ -259,9 +259,12 @@ func (c *Controller) reconcile(ctx context.Context, hr *manifest.HelmRelease) er
 		// with a patched copy; re-read so the rest of reconcile uses
 		// the canonical spec instead of the pre-patch snapshot we
 		// were dispatched with.
-		if obj, ok := store.Get[*manifest.HelmRelease](c.Store, id); ok {
-			hr = obj
-		}
+			if obj, ok := store.Get[*manifest.HelmRelease](c.Store, id); ok {
+				hr = obj
+			} else {
+				// Parent render replaced this stale ID; let the emitted HR reconcile.
+				return nil
+			}
 	}
 	if err := c.PreflightError(id); err != nil {
 		return err
@@ -291,6 +294,8 @@ func (c *Controller) reconcile(ctx context.Context, hr *manifest.HelmRelease) er
 		// the pre-mutation snapshot through chart resolution.
 		if obj, ok := store.Get[*manifest.HelmRelease](c.Store, id); ok {
 			hr = obj
+		} else {
+			return nil
 		}
 	}
 	if err := c.PreflightError(id); err != nil {
@@ -337,6 +342,8 @@ func (c *Controller) reconcile(ctx context.Context, hr *manifest.HelmRelease) er
 		}
 		if obj, ok := store.Get[*manifest.HelmRelease](c.Store, id); ok {
 			hr = obj
+		} else {
+			return nil
 		}
 		if len(omittedValuesRefs) > 0 {
 			hr = removeValuesRefs(hr, omittedValuesRefs)

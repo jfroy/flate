@@ -127,6 +127,37 @@ func TestEmitRenderedChildrenBatchesLeafDispatch(t *testing.T) {
 	}
 }
 
+func TestEmitRenderedChildrenDropsEmptyNamespaceAlias(t *testing.T) {
+	s := store.New()
+	c := &Controller{Controller: base.New(s, task.New())}
+	parent := manifest.NamedResource{Kind: manifest.KindKustomization, Namespace: "ns", Name: "parent"}
+	emptyID := manifest.NamedResource{Kind: manifest.KindHelmRelease, Name: "demo"}
+	effectiveID := manifest.NamedResource{Kind: manifest.KindHelmRelease, Namespace: "app", Name: "demo"}
+
+	s.AddObject(&manifest.HelmRelease{Name: "demo"})
+
+	var dispatched []manifest.NamedResource
+	s.AddListener(store.EventObjectAdded, func(id manifest.NamedResource, _ any) {
+		if id.Kind == manifest.KindHelmRelease {
+			dispatched = append(dispatched, id)
+		}
+	}, false)
+
+	c.emitRenderedChildren(parent, []map[string]any{helmReleaseDoc("demo", "app")})
+
+	if s.GetObject(emptyID) != nil {
+		t.Fatalf("empty-namespace alias %s remained in store", emptyID)
+	}
+	if s.GetObject(effectiveID) == nil {
+		t.Fatalf("effective rendered HelmRelease %s missing from store", effectiveID)
+	}
+	for _, id := range dispatched {
+		if id == emptyID {
+			t.Fatalf("dispatched stale empty-namespace HelmRelease: %v", dispatched)
+		}
+	}
+}
+
 func fluxKustomizationDoc(name, dep string) map[string]any {
 	return map[string]any{
 		"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
@@ -144,6 +175,29 @@ func fluxKustomizationDoc(name, dep string) map[string]any {
 			},
 			"dependsOn": []any{
 				map[string]any{"name": dep},
+			},
+		},
+	}
+}
+
+func helmReleaseDoc(name, namespace string) map[string]any {
+	return map[string]any{
+		"apiVersion": "helm.toolkit.fluxcd.io/v2",
+		"kind":       "HelmRelease",
+		"metadata": map[string]any{
+			"name":      name,
+			"namespace": namespace,
+		},
+		"spec": map[string]any{
+			"interval": "10m",
+			"chart": map[string]any{
+				"spec": map[string]any{
+					"chart": "demo",
+					"sourceRef": map[string]any{
+						"kind": "HelmRepository",
+						"name": "repo",
+					},
+				},
 			},
 		},
 	}

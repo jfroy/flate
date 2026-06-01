@@ -62,6 +62,7 @@ func (c *Controller) emitRenderedChildren(id manifest.NamedResource, docs []map[
 		if p.reconcilable {
 			childID := p.obj.Named()
 			c.keepEmitted(id, childID)
+			c.dropEmptyNamespaceAlias(childID)
 			c.Store.AddObject(p.obj)
 			rendered = append(rendered, childID)
 		} else {
@@ -74,12 +75,22 @@ func (c *Controller) emitRenderedChildren(id manifest.NamedResource, docs []map[
 		if p.reconcilable && isLeafReconcilable(p.obj) {
 			childID := p.obj.Named()
 			c.keepEmitted(id, childID)
+			c.dropEmptyNamespaceAlias(childID)
 			rendered = append(rendered, childID)
 			leaves = append(leaves, p.obj)
 		}
 	}
 	c.markRenderedBatch(id, rendered)
 	c.Store.AddObjects(leaves)
+}
+
+func (c *Controller) dropEmptyNamespaceAlias(id manifest.NamedResource) {
+	if id.Namespace == "" {
+		return
+	}
+	alias := id
+	alias.Namespace = ""
+	c.Store.DeleteObject(alias)
 }
 
 // keepEmitted extends the change filter's keep set so render-emitted

@@ -85,6 +85,37 @@ func TestController_FilterUnchangedShortCircuitsToReady(t *testing.T) {
 	}
 }
 
+func TestController_DeletedWhileParentGatedDoesNotRenderStaleObject(t *testing.T) {
+	parent := manifest.NamedResource{Kind: manifest.KindKustomization, Namespace: "ns", Name: "parent"}
+	hrID := manifest.NamedResource{Kind: manifest.KindHelmRelease, Name: "demo"}
+	_, st := newTestControllerWithParentOf(t, map[manifest.NamedResource]manifest.NamedResource{
+		hrID: parent,
+	})
+	hr := &manifest.HelmRelease{
+		Name: "demo",
+		HelmReleaseSpec: helmv2.HelmReleaseSpec{
+			Interval: metav1Duration(time.Hour),
+			Timeout:  ptrDuration(20 * time.Millisecond),
+		},
+		Chart: manifest.HelmChart{
+			Name:          "chart",
+			RepoKind:      manifest.KindHelmRepository,
+			RepoName:      "repo",
+			RepoNamespace: "ns",
+		},
+	}
+
+	st.AddObject(hr)
+	testutil.WaitForStatus(t, st, hrID, store.StatusPending)
+	st.DeleteObject(hrID)
+	st.UpdateStatus(parent, store.StatusReady, "")
+
+	info := testutil.WaitForStatus(t, st, hrID, store.StatusReady)
+	if info.Status == store.StatusFailed {
+		t.Fatalf("stale deleted HelmRelease rendered after parent wait: %+v", info)
+	}
+}
+
 func TestController_AllowMissingSecretsOmitsUnavailableValuesFrom(t *testing.T) {
 	dir := t.TempDir()
 	testutil.WriteFile(t, dir, "mychart/Chart.yaml", `apiVersion: v2
